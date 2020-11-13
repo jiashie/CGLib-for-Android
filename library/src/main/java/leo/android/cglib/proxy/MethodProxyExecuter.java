@@ -24,6 +24,7 @@ public class MethodProxyExecuter {
 			Method method = subClass.getDeclaredMethod(methodName + Const.SUBCLASS_INVOKE_SUPER_SUFFIX, argsType);
 			return method.invoke(object, argsValue);
 		} catch (Exception e) {
+			e.printStackTrace();
 			throw new ProxyException(e.getMessage());
 		}
 	}

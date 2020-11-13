@@ -1,0 +1,144 @@
+import proguard.gradle.ProGuardTask
+
+import java.nio.file.Files
+import java.nio.file.Paths
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'net.sf.proguard:proguard-gradle:5.3.3'
+    }
+}
+
+def getPackageName() {
+    //AndroidManifes.xml文件的路径
+    //println("jar-minifest:" + project.android.sourceSets.main.manifest.srcFile)
+    def androidManifest = new XmlSlurper().parse(project.android.sourceSets.main.manifest.srcFile)
+    def packageName = androidManifest['@package']
+    //println("jar-packageName:" + packageName)
+    packageName = "leo.android.cglib"
+    return packageName
+}
+
+def packageNameToPackagePath() {
+    String packagePath = "${getPackageName()}".replace('.', '/')
+    //println("jar-packagePath:" + packagePath)
+    return packagePath
+}
+
+android.libraryVariants.all { variant ->
+    task ("makeJar${variant.name.capitalize()}", type: Jar){
+        group "makejar"
+        description "Automatically generate the jar packages for the SDK"
+        //忽略UP-TO-DATE状态
+        outputs.upToDateWhen { false }
+        dependsOn "compile${variant.name.capitalize()}JavaWithJavac"
+        doFirst{
+            def buildName = variant.name.capitalize()
+
+            //需打包的资源所在的路径集
+            def possibleClassesPath = [project.buildDir.absolutePath + "/intermediates/classes/${buildName}",
+                               //gradle 3.2之后，代码编译后的class路径intermediates/javac/release/compileReleaseJavaWithJavac/classes
+                               project.buildDir.absolutePath + "/intermediates/javac/${variant.name}/compile${buildName}JavaWithJavac/classes",
+                                //gradle 4.0之后的路径
+                               project.buildDir.absolutePath + "/intermediates/javac/${variant.name}/classes"]
+            def srcClassDir = possibleClassesPath.find{
+                Files.exists(Paths.get(it))
+            }
+
+            //输出class文件的路径
+            println("jar-srcClassDir:" + srcClassDir)
+
+            //初始化资源路径集
+            from srcClassDir
+
+            //去除路径集下部分的资源
+            def packageNamePath = packageNameToPackagePath()
+            exclude "**/BuildConfig.class"
+            exclude "**/BuildConfig\$*.class"
+            exclude "**/R.class"
+            exclude "**/R\$*.class"
+            //只导入资源路径集下的部分资源
+            //include packageNamePath + "/**/*.class"
+
+            //整理输出的 Jar 文件后缀名
+            extension = "jar"
+            //最终的 Jar 文件名
+            archiveName = project.name + "-org-" + project.android.defaultConfig.versionName + "." + extension
+        }
+        doLast {
+            copy {
+                def dest = "${rootDir}/${project.name}/lib-output"
+                def fromDir = "${project.buildDir}/libs"
+                println "copy ${archiveName} from ${fromDir} into ${dest}"
+                from fromDir
+                into dest
+                rename {'cglib-for-android.jar'}
+                include archiveName
+            }
+        }
+    }
+
+    task ("proguardJar${variant.name.capitalize()}",type: ProGuardTask) {
+        group "makejar"
+        description "Automatically generate the proguard jar packages for the SDK"
+        //忽略UP-TO-DATE状态
+        outputs.upToDateWhen { false }
+        dependsOn "makeJar${variant.name.capitalize()}"
+        doFirst {
+            //Android 默认的 proguard 文件
+            //configuration project.android.getDefaultProguardFile('proguard-android-optimize.txt')
+            //自定义混淆的配置文件
+            configuration 'proguard-rules.pro'
+            //makeJar.archivePath.getAbsolutePath()
+            String inJar = project.getTasksByName("makeJar${variant.name.capitalize()}", false)[0].archivePath.getAbsolutePath()
+            //输入未混淆jar包的路径
+            println("jar-inJar:" + inJar)
+            //输入 jar
+            injars inJar
+            //输出 jar
+            String outJar = inJar.substring(0, inJar.lastIndexOf(File.separator)) + "/${makeJar.archiveName}".replace("-org-", "-")
+            //输出混淆jar包的路径
+            println("jar-outJar:" + outJar)
+            outjars outJar
+            //设置不删除未引用的资源(类，方法等)
+            dontshrink
+
+            Set<String> thirdJars = new HashSet<>()
+            variant.getCompileClasspath().each{
+                println("jar-compileClassPath:${it}")
+                thirdJars.add(it.absolutePath)
+            }
+            //libraryjars files(variant.getCompileClasspath())
+
+
+            Plugin plugin = getPlugins().hasPlugin('com.android.application') ?
+                    getPlugins().findPlugin('com.android.application') :
+                    getPlugins().findPlugin('com.android.library')
+            if (plugin != null) {
+                List<String> runtimeJarList
+                if (plugin.getMetaClass().getMetaMethod("getRuntimeJarList")) {
+                    runtimeJarList = plugin.getRuntimeJarList()
+                    println("jar-getRuntimeJarList:")
+                } else if (project.android.getMetaClass().getMetaMethod("getBootClasspath")) {
+                    runtimeJarList = project.android.getBootClasspath()
+                    println("jar-getBootClasspath:")
+                } else {
+                    runtimeJarList = plugin.getBootClasspath()
+                    println("jar-getBootClasspath2:")
+                }
+                for (String runtimeJar : runtimeJarList) {
+                    println("jar-runtimejar:" + runtimeJar)
+                    //给 proguard 添加 runtime
+                    //libraryjars(runtimeJar)
+                    thirdJars.add(runtimeJar)
+                }
+            }
+
+            libraryjars files(thirdJars)
+        }
+    }
+}

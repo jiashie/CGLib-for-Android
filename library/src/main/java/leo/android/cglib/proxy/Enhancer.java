@@ -1,5 +1,7 @@
 package leo.android.cglib.proxy;
 
+import android.content.Context;
+
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Method;
@@ -13,7 +15,6 @@ import leo.android.cglib.dx.Label;
 import leo.android.cglib.dx.Local;
 import leo.android.cglib.dx.MethodId;
 import leo.android.cglib.dx.TypeId;
-import android.content.Context;
 
 public class Enhancer {
 	
@@ -119,6 +120,10 @@ public class Enhancer {
 			if (methodName.contains("$")) {  // Android studio will generate access$super method for every class
 				continue ;
 			}
+			if (Modifier.isStatic(method.getModifiers())) {
+				//ignore static method
+				continue;
+			}
 			retClass = method.getReturnType();
 			isVoid = retClass.getSimpleName().equals("void");
 			methodReturnType = TypeId.get(retClass);
@@ -133,8 +138,15 @@ public class Enhancer {
 			} else {
 				subMethodId = subType.getMethod(methodReturnType, methodName);
 			}
-			code = dexMaker.declare(subMethodId, method.getModifiers());
-			
+			//remove abstract modifier; mark isAbstract to true, so that leave empty body in generate $Super$ method.
+			int modifiers = method.getModifiers();
+			boolean isAbstract = false;
+			if (Modifier.isAbstract(modifiers)) {
+				isAbstract = true;
+				modifiers = modifiers & ~Modifier.ABSTRACT;
+			}
+			code = dexMaker.declare(subMethodId, modifiers);
+
 			Local retLocal = code.newLocal(methodReturnType);
 			Local retPackLocal = null;
 			if (retClass.isPrimitive()) {
@@ -215,7 +227,8 @@ public class Enhancer {
 				subMethodId = subType.getMethod(methodReturnType, methodName + Const.SUBCLASS_INVOKE_SUPER_SUFFIX);
 				superMethodId = superType.getMethod(methodReturnType, methodName);
 			}
-			code = dexMaker.declare(subMethodId, method.getModifiers());
+
+			code = dexMaker.declare(subMethodId, modifiers);
 			retLocal = code.newLocal(methodReturnType);
 			Local[] superArgsValueLocal = null;
 			thisLocal = code.getThis(subType);
@@ -224,9 +237,13 @@ public class Enhancer {
 				for (int i=0; i<argsClass.length; i++) {
 					superArgsValueLocal[i] = code.getParameter(i, argsTypeId[i]);
 				}
-				code.invokeSuper(superMethodId, isVoid ? null : retLocal, thisLocal, superArgsValueLocal);
+				if (!isAbstract) {
+					code.invokeSuper(superMethodId, isVoid ? null : retLocal, thisLocal, superArgsValueLocal);
+				}
 			} else {
-				code.invokeSuper(superMethodId, isVoid ? null : retLocal, thisLocal);
+				if (!isAbstract) {
+					code.invokeSuper(superMethodId, isVoid ? null : retLocal, thisLocal);
+				}
 			}
 			if (isVoid) {
 				code.returnVoid();

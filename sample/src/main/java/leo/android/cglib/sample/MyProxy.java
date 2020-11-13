@@ -23,9 +23,9 @@ public class MyProxy implements MethodInterceptor {
 
 	@Override
 	public Object intercept(Object object, Object[] args, MethodProxy methodProxy) throws Exception {
-		Logger.d("begin print");
+		Logger.d("begin " + object.getClass().getName() + ".." + methodProxy.getMethodName());
 		Object result = methodProxy.invokeSuper(object, args);
-		Logger.d("end print");
+		Logger.d("end " + methodProxy.getMethodName());
 		return result;
 	}
 
