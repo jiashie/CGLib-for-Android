@@ -18,7 +18,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         setContentView(R.layout.activity_main);
 
         //printer = (Printer) new MyProxy(this).getProxy(Printer.class);
-        printer = CgLigProxy.newProxyInstance(this, Printer.class, new MethodInterceptor() {
+        printer = CgLibProxy.newProxyInstance(this, Printer.class, new MethodInterceptor() {
             @Override
             public Object intercept(Object object, Object[] args, MethodProxy methodProxy) throws Exception {
                 Logger.d("begin " + object.getClass().getName() + ".." + methodProxy.getMethodName());

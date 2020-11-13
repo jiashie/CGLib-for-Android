@@ -5,8 +5,8 @@ import android.content.Context;
 import leo.android.cglib.proxy.Enhancer;
 import leo.android.cglib.proxy.MethodInterceptor;
 
-public class CgLigProxy {
-    private CgLigProxy() {
+public class CgLibProxy {
+    private CgLibProxy() {
 
     }
     public static <T> T newProxyInstance(Context context, Class<T> superClass, MethodInterceptor interceptor) {
